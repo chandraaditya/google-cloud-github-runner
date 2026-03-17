@@ -2,8 +2,10 @@
 Routes for handling Cloud Tasks callbacks.
 """
 import logging
+import os
 from flask import Blueprint, request, jsonify
 from app.services import WebhookService
+from app.clients.gcloud_client import GCloudClient
 from app import limiter
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,17 @@ def create_runner():
     if not template_name:
         logger.error("Missing template_name in task payload")
         return jsonify({'status': 'error', 'message': 'Missing template_name'}), 400
+
+    # Check concurrency limit before creating a VM
+    max_runners = int(os.environ.get('MAX_CONCURRENT_RUNNERS', '20'))
+    gcloud_client = GCloudClient()
+    current_count = gcloud_client.count_runner_instances()
+    if current_count >= max_runners:
+        logger.warning(
+            "Concurrency limit reached: %d/%d runners active. Cloud Tasks will retry.",
+            current_count, max_runners
+        )
+        return jsonify({'status': 'throttled', 'message': 'Concurrency limit reached'}), 503
 
     try:
         webhook_service = WebhookService()

@@ -34,6 +34,7 @@ module "cloud_run_github_runners_manager" {
         CLOUD_TASKS_QUEUE           = google_cloud_tasks_queue.runner_jobs.name
         CLOUD_TASKS_LOCATION        = var.region
         CLOUD_TASKS_SERVICE_ACCOUNT = module.service-account-cloud-run-github-runners-manager.email
+        MAX_CONCURRENT_RUNNERS      = tostring(var.github_runners_max_concurrent_jobs)
       }
       env_from_key = {
         GITHUB_APP_ID = {

@@ -131,6 +131,29 @@ class GCloudClient:
             logger.error(f"Failed to create instance: {e}")
             raise
 
+    def count_runner_instances(self):
+        """
+        Count the number of currently running or provisioning runner GCE instances.
+
+        Returns:
+            int: The number of active runner instances.
+        """
+        try:
+            count = 0
+            request = compute_v1.ListInstancesRequest(
+                project=self.project_id,
+                zone=self.zone,
+            )
+            for instance in self.instance_client.list(request=request):
+                if (instance.name.startswith("runner-") or instance.name.startswith("dependabot-")) and \
+                        instance.status in ("RUNNING", "STAGING", "PROVISIONING"):
+                    count += 1
+            logger.info(f"Active runner instance count: {count}")
+            return count
+        except Exception as e:
+            logger.error(f"Failed to count runner instances: {e}")
+            return 0
+
     def delete_runner_instance(self, instance_name):
         """
         Delete a GCE instance.

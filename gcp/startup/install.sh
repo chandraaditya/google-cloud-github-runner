@@ -93,6 +93,14 @@ sudo apt-get install -y \
 	docker-buildx-plugin \
 	docker-compose-plugin
 
+# Configure Docker to use GCP's Docker Hub mirror to avoid rate limits
+sudo mkdir -p /etc/docker
+cat <<'DAEMON_JSON' | sudo tee /etc/docker/daemon.json
+{
+  "registry-mirrors": ["https://mirror.gcr.io"]
+}
+DAEMON_JSON
+
 # Enable and start Docker service
 sudo systemctl enable docker.service
 sudo systemctl start docker.service

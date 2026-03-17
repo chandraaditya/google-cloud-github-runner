@@ -101,6 +101,13 @@ cat <<'DAEMON_JSON' | sudo tee /etc/docker/daemon.json
 }
 DAEMON_JSON
 
+# Configure BuildKit to use GCP's Docker Hub mirror (for docker buildx)
+sudo mkdir -p /etc/buildkit
+cat <<'BUILDKIT_TOML' | sudo tee /etc/buildkit/buildkitd.toml
+[registry."docker.io"]
+  mirrors = ["mirror.gcr.io"]
+BUILDKIT_TOML
+
 # Enable and start Docker service
 sudo systemctl enable docker.service
 sudo systemctl start docker.service

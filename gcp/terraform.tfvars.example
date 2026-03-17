@@ -1,0 +1,19 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored and will not be committed.
+
+# Required: Your Google Cloud project ID
+project_id = "your-project-id"
+
+# Optional: Google Cloud region and zone
+# region = "us-central1"
+# zone   = "b"
+
+# Optional: Maximum number of concurrent runner VMs (controlled via Cloud Tasks queue)
+# github_runners_max_concurrent_jobs = 20
+
+# Optional: Cloud Run manager scaling
+# github_runners_manager_min_instance_count = 1
+# github_runners_manager_max_instance_count = 1
+
+# Optional: Internal CIDR range for runner VMs
+# github_runners_internal_cidr = "100.64.0.0/16"

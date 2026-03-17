@@ -3,7 +3,7 @@ Service for processing webhook events.
 """
 import logging
 import re
-from app.clients import GitHubClient, GCloudClient
+from app.clients import GitHubClient, GCloudClient, CloudTasksClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ class WebhookService:
         """Initialize WebhookService with API clients."""
         self.github_client = GitHubClient()
         self.gcloud_client = GCloudClient()
+        self.cloud_tasks_client = CloudTasksClient()
 
     def _validate_payload(self, payload):
         """Validate webhook payload structure and content."""
@@ -40,7 +41,7 @@ class WebhookService:
 
         return True
 
-    def handle_workflow_job(self, payload):
+    def handle_workflow_job(self, payload, base_url=None):
         """Process the workflow_job webhook payload from GitHub."""
         # Validate payload structure
         self._validate_payload(payload)
@@ -67,7 +68,7 @@ class WebhookService:
                         break
             if template_name:
                 logger.info("Found matching gcp- label prefix: %s", template_name)
-                self._handle_queued_job(template_name, repo_url, repo_owner_url, repo_name, org_name)
+                self._enqueue_runner_creation(base_url, template_name, repo_url, repo_owner_url, repo_name, org_name)
             else:
                 logger.warning("No matching gcp- label prefix found for labels %s. Ignoring job.", labels)
 
@@ -75,22 +76,34 @@ class WebhookService:
         elif action == 'completed':
             self._handle_completed_job(workflow_job)
 
-    def _handle_queued_job(self, template_name, repo_url, repo_owner_url, repo_name, org_name):
-        """Handle queued workflow job."""
+    def _enqueue_runner_creation(self, base_url, template_name, repo_url, repo_owner_url, repo_name, org_name):
+        """Enqueue a runner creation task via Cloud Tasks."""
         try:
-            # Get registration token
+            task_payload = {
+                'template_name': template_name,
+                'repo_url': repo_url,
+                'repo_owner_url': repo_owner_url,
+                'repo_name': repo_name,
+                'org_name': org_name,
+            }
+            self.cloud_tasks_client.enqueue_create_runner(base_url, task_payload)
+            logger.info("Enqueued runner creation task for template: %s", template_name)
+        except Exception as e:
+            logger.error("Failed to enqueue runner creation task: %s", str(e))
+            raise
+
+    def create_runner(self, template_name, repo_url, repo_owner_url, repo_name, org_name):
+        """Create a runner instance. Called by Cloud Tasks task handler."""
+        try:
             if org_name:
-                # Create GitHub Actions runner instance for organization
                 token = self.github_client.get_registration_token(org_name=org_name)
                 self.gcloud_client.create_runner_instance(token, repo_owner_url, template_name, repo_name)
             elif repo_name:
-                # Create GitHub Actions runner instance for repository
                 token = self.github_client.get_registration_token(repo_name=repo_name)
                 self.gcloud_client.create_runner_instance(token, repo_url, template_name, repo_name)
             else:
                 logger.error("Neither repository nor organization found in payload. Ignoring job.")
                 return
-
         except Exception as e:
             logger.error("Failed to spawn runner: %s", str(e))
             raise

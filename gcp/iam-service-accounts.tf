@@ -35,11 +35,23 @@ module "service-account-cloud-run-github-runners-manager" {
   display_name = "Cloud Run - GitHub Actions Runners manager (Terraform managed)"
   iam_project_roles = {
     (module.project.project_id) = [
+      "roles/cloudtasks.enqueuer",
       "roles/compute.admin",
       "roles/logging.logWriter",
       "roles/monitoring.metricWriter",
     ]
   }
+}
+
+# Allow the Cloud Run service account to create OIDC tokens as itself
+# (required for Cloud Tasks to authenticate when dispatching tasks to Cloud Run)
+resource "google_service_account_iam_member" "cloud_run_sa_act_as_self" {
+  service_account_id = module.service-account-cloud-run-github-runners-manager.id
+  role               = "roles/iam.serviceAccountUser"
+  member             = module.service-account-cloud-run-github-runners-manager.iam_email
+  depends_on = [
+    time_sleep.wait_for_service_account_cloud_run
+  ]
 }
 
 # Wait for service account to be fully propagated in Google Cloud IAM

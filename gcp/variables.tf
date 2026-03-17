@@ -5,6 +5,7 @@ variable "apis" {
   default = [
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudtasks.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "iam.googleapis.com",
@@ -97,6 +98,18 @@ variable "github_runners_manager_max_instance_count" {
   validation {
     condition     = var.github_runners_manager_max_instance_count >= var.github_runners_manager_min_instance_count
     error_message = "Maximum instance count must be larger than or equal to github_runners_manager_min_instance_count."
+  }
+}
+
+# Maximum number of concurrent runner VMs (controlled via Cloud Tasks queue)
+variable "github_runners_max_concurrent_jobs" {
+  description = "Maximum number of concurrent runner VM creation jobs dispatched by Cloud Tasks"
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.github_runners_max_concurrent_jobs >= 1
+    error_message = "Maximum concurrent jobs must be at least 1."
   }
 }
 
@@ -220,7 +233,7 @@ variable "github_runners_types" {
       vcpu                        = 2
       memory                      = 4
       disk_type                   = "pd-ssd"
-      disk_size                   = 50
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -244,7 +257,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "pd-ssd"
-      disk_size                   = 25
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -256,7 +269,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "pd-ssd"
-      disk_size                   = 25
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -268,7 +281,7 @@ variable "github_runners_types" {
       vcpu                        = 2
       memory                      = 8
       disk_type                   = "pd-ssd"
-      disk_size                   = 75
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -280,7 +293,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "pd-ssd"
-      disk_size                   = 150
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -292,7 +305,7 @@ variable "github_runners_types" {
       vcpu                        = 8
       memory                      = 32
       disk_type                   = "pd-ssd"
-      disk_size                   = 300
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -304,7 +317,7 @@ variable "github_runners_types" {
       vcpu                        = 16
       memory                      = 64
       disk_type                   = "pd-ssd"
-      disk_size                   = 600
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -316,7 +329,7 @@ variable "github_runners_types" {
       vcpu                        = 32
       memory                      = 128
       disk_type                   = "pd-ssd"
-      disk_size                   = 1200
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -328,7 +341,7 @@ variable "github_runners_types" {
       vcpu                        = 64
       memory                      = 256
       disk_type                   = "pd-ssd"
-      disk_size                   = 2040
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -340,7 +353,7 @@ variable "github_runners_types" {
       vcpu                        = 96
       memory                      = 384
       disk_type                   = "pd-ssd"
-      disk_size                   = 2040
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -352,7 +365,7 @@ variable "github_runners_types" {
       vcpu                        = 128
       memory                      = 512
       disk_type                   = "pd-ssd"
-      disk_size                   = 2040
+      disk_size                   = 20
       disk_provisioned_iops       = 0
       disk_provisioned_throughput = 0
       image                       = "ubuntu-2404-lts-amd64"
@@ -376,7 +389,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 25
+      disk_size                   = 20
       disk_provisioned_iops       = 3150
       disk_provisioned_throughput = 177
       image                       = "ubuntu-2404-lts-arm64"
@@ -388,7 +401,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 25
+      disk_size                   = 20
       disk_provisioned_iops       = 3150
       disk_provisioned_throughput = 177
       image                       = "ubuntu-2404-lts-arm64"
@@ -400,7 +413,7 @@ variable "github_runners_types" {
       vcpu                        = 2
       memory                      = 8
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 75
+      disk_size                   = 20
       disk_provisioned_iops       = 3450
       disk_provisioned_throughput = 252
       image                       = "ubuntu-2404-lts-arm64"
@@ -412,7 +425,7 @@ variable "github_runners_types" {
       vcpu                        = 4
       memory                      = 16
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 150
+      disk_size                   = 20
       disk_provisioned_iops       = 3900
       disk_provisioned_throughput = 365
       image                       = "ubuntu-2404-lts-arm64"
@@ -424,7 +437,7 @@ variable "github_runners_types" {
       vcpu                        = 8
       memory                      = 32
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 300
+      disk_size                   = 20
       disk_provisioned_iops       = 4800
       disk_provisioned_throughput = 590
       image                       = "ubuntu-2404-lts-arm64"
@@ -436,7 +449,7 @@ variable "github_runners_types" {
       vcpu                        = 16
       memory                      = 64
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 600
+      disk_size                   = 20
       disk_provisioned_iops       = 6600
       disk_provisioned_throughput = 1040
       image                       = "ubuntu-2404-lts-arm64"
@@ -448,7 +461,7 @@ variable "github_runners_types" {
       vcpu                        = 32
       memory                      = 128
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 1200
+      disk_size                   = 20
       disk_provisioned_iops       = 10200
       disk_provisioned_throughput = 1940
       image                       = "ubuntu-2404-lts-arm64"
@@ -460,7 +473,7 @@ variable "github_runners_types" {
       vcpu                        = 64
       memory                      = 256
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 2040
+      disk_size                   = 20
       disk_provisioned_iops       = 15240
       disk_provisioned_throughput = 2400
       image                       = "ubuntu-2404-lts-arm64"
@@ -472,7 +485,7 @@ variable "github_runners_types" {
       vcpu                        = 72
       memory                      = 288
       disk_type                   = "hyperdisk-balanced"
-      disk_size                   = 2040
+      disk_size                   = 20
       disk_provisioned_iops       = 15240
       disk_provisioned_throughput = 2400
       image                       = "ubuntu-2404-lts-arm64"

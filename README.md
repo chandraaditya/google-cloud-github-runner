@@ -22,6 +22,7 @@ The architecture prioritizes **simplicity and auditability**, avoiding complex a
 *   **Workflow Jobs run in VMs, not Containers**: Better isolation and native support for tools that struggle in containerized environments (like Docker-in-Docker or system-level changes).
 *   **No Kubernetes Overhead**: No cluster to manage, no complex operator configuration. Just Terraform and Cloud Run.
 *   **Ephemeral Runners**: Automatically creates and destroys runners for each job.
+*   **Concurrency Control**: Configurable limit on concurrent runner VMs via Cloud Tasks queue to prevent quota exhaustion.
 *   **Org & Repo Level**: Supports both Organization and Repository level runners.
 *   **Automatic Setup**: Easy web-based setup to create and configure the GitHub App.
 *   **Secure Configuration**: Automatically stores credentials in Google Secret Manager.
@@ -169,6 +170,10 @@ graph TD
             flask[🚀 Python Flask App]
         end
 
+        subgraph Queue[Cloud Tasks]
+            ct[📋 Runner Jobs Queue]
+        end
+
         subgraph Secrets[Secret Manager]
             s1[🆔 GitHub App ID]
             s2[🔢 GitHub Installation ID]
@@ -185,29 +190,33 @@ graph TD
     user -->|Setup & Config| flask
 
     gh_actions -->|1. Webhook: Job Queued| flask
+    flask -->|2. Enqueue Task| ct
+    ct -->|3. Dispatch with concurrency limit| flask
 
     %% Access Control: Only Cloud Run can Read/Write Secrets
     flask <-->|Read & Write| Secrets
 
-    flask -->|2. Get Runner Token| gh_api
-    flask -->|3. Create Runner Instance| vm
+    flask -->|4. Get Runner Token| gh_api
+    flask -->|5. Create Runner Instance| vm
 
-    vm -->|4. Register & Run Job| gh_actions
+    vm -->|6. Register & Run Job| gh_actions
 
-    gh_actions -->|5. Webhook: Job Completed| flask
-    flask -->|6. Delete Runner Instance| vm
+    gh_actions -->|7. Webhook: Job Completed| flask
+    flask -->|8. Delete Runner Instance| vm
 
-    class CloudRun,Secrets,GCE gcp;
+    class CloudRun,Secrets,GCE,Queue gcp;
     class gh_actions,gh_api gh;
     class user user;
 ```
 
 1.  **Webhook: Job Queued**: GitHub sends `workflow_job.queued` to the webhook.
-2.  **Get Runner Token**: App authenticates via stored Private Key to request a registration token.
-3.  **Create Runner Instance (VM)**: App calls Google Compute Engine API to spawn a templated instance.
-4.  **Register & Run Job**: Instance starts and registers with GitHub and runs the job.
-5.  **Webhook: Job Completed**: Instance deregisters with GitHub and is deleted.
-6.  **Delete Runner Instance (VM)**: App deletes the GCE instance upon `workflow_job.completed`.
+2.  **Enqueue Task**: App enqueues a runner creation task to Cloud Tasks (responds to GitHub in <200ms).
+3.  **Cloud Tasks Dispatch**: Cloud Tasks dispatches the task respecting the `max_concurrent_dispatches` limit.
+4.  **Get Runner Token**: App authenticates via stored Private Key to request a registration token.
+5.  **Create Runner Instance (VM)**: App calls Google Compute Engine API to spawn a templated instance.
+6.  **Register & Run Job**: Instance starts and registers with GitHub and runs the job.
+7.  **Webhook: Job Completed**: Instance deregisters with GitHub and is deleted.
+8.  **Delete Runner Instance (VM)**: App deletes the GCE instance upon `workflow_job.completed`.
 
 ## 🔐 Environment Variables
 
@@ -221,6 +230,9 @@ graph TD
 | `GITHUB_WEBHOOK_SECRET`   | Webhook signature secret       | Yes                                        |
 | `GOOGLE_CLOUD_PROJECT`    | Google Cloud Project ID        | Yes                                        |
 | `GOOGLE_CLOUD_ZONE`       | Default GCP zone for runners   | No (default: `us-central1-a`)              |
+| `CLOUD_TASKS_QUEUE`       | Cloud Tasks queue name         | Yes (set by Terraform)                     |
+| `CLOUD_TASKS_LOCATION`    | Cloud Tasks queue region       | Yes (set by Terraform)                     |
+| `CLOUD_TASKS_SERVICE_ACCOUNT` | Service account for OIDC tokens | Yes (set by Terraform)                 |
 | `PORT`                    | Web server port                | No (default: `8080`)                       |
 | `SETUP_USERNAME`          | Setup authentication username  | No (default: `cloud`)                      |
 | `SETUP_PASSWORD`          | Setup authentication password  | No (default: `GOOGLE_CLOUD_PROJECT`)       |
@@ -234,6 +246,7 @@ graph TD
 *   `GET /setup/complete` - Post-installation handler (requires HTTP Basic Auth)
 *   `POST /setup/trigger-restart` - Restart application (requires HTTP Basic Auth)
 *   `POST /webhook` - Main GitHub webhook receiver (requires valid GitHub webhook signature)
+*   `POST /tasks/create-runner` - Cloud Tasks callback for runner creation (requires `X-CloudTasks-QueueName` header)
 
 ## 💻 Local Development
 

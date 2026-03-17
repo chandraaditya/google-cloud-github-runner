@@ -29,8 +29,11 @@ module "cloud_run_github_runners_manager" {
         startup_cpu_boost = false # We do not scale to zero.
       }
       env = {
-        GOOGLE_CLOUD_PROJECT = var.project_id
-        GOOGLE_CLOUD_ZONE    = "${var.region}-${var.zone}"
+        GOOGLE_CLOUD_PROJECT        = var.project_id
+        GOOGLE_CLOUD_ZONE           = "${var.region}-${var.zone}"
+        CLOUD_TASKS_QUEUE           = google_cloud_tasks_queue.runner_jobs.name
+        CLOUD_TASKS_LOCATION        = var.region
+        CLOUD_TASKS_SERVICE_ACCOUNT = module.service-account-cloud-run-github-runners-manager.email
       }
       env_from_key = {
         GITHUB_APP_ID = {

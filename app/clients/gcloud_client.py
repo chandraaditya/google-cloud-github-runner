@@ -126,6 +126,10 @@ class GCloudClient:
                 request=request
             )
             logger.info(f"Instance creation operation started: {operation.name}")
+            # Wait for the operation to complete so we catch errors like
+            # ZONE_RESOURCE_POOL_EXHAUSTED before returning success.
+            operation.result()
+            logger.info(f"Instance created successfully: {instance_name}")
             return instance_name
         except Exception as e:
             logger.error(f"Failed to create instance: {e}")

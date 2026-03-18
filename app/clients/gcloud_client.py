@@ -154,14 +154,14 @@ class GCloudClient:
 
         # Set metadata (startup script) - use shlex.quote to prevent command injection
         startup_script = (
-            # Idle watchdog: if no job starts within 5 min, self-delete
-            f"( sleep 300 && "
-            f"if ! pgrep -f Runner.Worker > /dev/null; then {self_delete}; fi ) & "
-            # Normal runner startup
             f"sudo -u runner /actions-runner/config.sh --url {shlex.quote(repo_url)} "
             f"--token {shlex.quote(registration_token)} "
             f"--name {shlex.quote(instance_name)} --labels {shlex.quote(template_name)} "
             "--ephemeral --unattended --no-default-labels --disableupdate && "
+            # Start idle watchdog AFTER config, right before run.sh:
+            # if no job picked up within 2 min of run.sh starting, self-delete
+            f"( sleep 120 && "
+            f"if ! pgrep -f Runner.Worker > /dev/null; then {self_delete}; fi ) & "
             "sudo -u runner /actions-runner/run.sh"
         )
         metadata = compute_v1.Metadata()

@@ -22,6 +22,14 @@ _SERIES_FALLBACKS = {
     'c4a': ['t2a'],  # ARM-only fallback
 }
 
+# E2 "medium"/"small"/"micro" don't exist in other series.
+# Map them to the closest standard equivalent.
+_MACHINE_TYPE_OVERRIDES = {
+    'e2-medium': ['n1-standard-1', 't2d-standard-1', 'n2d-standard-2'],
+    'e2-small': ['n1-standard-1', 't2d-standard-1'],
+    'e2-micro': ['n1-standard-1', 't2d-standard-1'],
+}
+
 
 class GCloudClient:
     """Client for interacting with Google Cloud Compute Engine API."""
@@ -58,6 +66,10 @@ class GCloudClient:
         Returns:
             list[str]: Ordered list of fallback machine types to try.
         """
+        # Check for special overrides (e.g. e2-medium has no equivalent in other series)
+        if machine_type in _MACHINE_TYPE_OVERRIDES:
+            return _MACHINE_TYPE_OVERRIDES[machine_type]
+
         # Parse series from machine type: "e2-standard-2" → series="e2", spec="-standard-2"
         match = re.match(r'^([a-z]\w*?)(-.+)$', machine_type)
         if not match:

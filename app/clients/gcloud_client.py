@@ -11,6 +11,17 @@ import google.cloud.compute_v1 as compute_v1
 
 logger = logging.getLogger(__name__)
 
+# Machine series fallback order for ZONE_RESOURCE_POOL_EXHAUSTED.
+# Key = primary series, value = ordered list of fallback series to try.
+# All fallbacks are within ~50% of the baseline series price.
+_SERIES_FALLBACKS = {
+    'e2': ['n2d', 't2d', 'n1'],
+    'n2': ['n2d', 'e2', 'n1'],
+    'n2d': ['e2', 't2d', 'n1'],
+    'n1': ['e2', 'n2d', 't2d'],
+    'c4a': ['t2a'],  # ARM-only fallback
+}
+
 
 class GCloudClient:
     """Client for interacting with Google Cloud Compute Engine API."""
@@ -35,6 +46,26 @@ class GCloudClient:
         # Create a RegionInstanceTemplatesClient for retrieving templates in a specific region
         # https://docs.cloud.google.com/python/docs/reference/compute/latest/google.cloud.compute_v1.services.region_instance_templates
         self.instance_templates_client = compute_v1.RegionInstanceTemplatesClient()
+
+    @staticmethod
+    def _get_fallback_machine_types(machine_type):
+        """
+        Generate fallback machine types for when the primary is unavailable.
+
+        Args:
+            machine_type (str): The original machine type (e.g. "e2-standard-2").
+
+        Returns:
+            list[str]: Ordered list of fallback machine types to try.
+        """
+        # Parse series from machine type: "e2-standard-2" → series="e2", spec="-standard-2"
+        match = re.match(r'^([a-z]\w*?)(-.+)$', machine_type)
+        if not match:
+            return []
+
+        series, spec = match.groups()
+        fallbacks = _SERIES_FALLBACKS.get(series, [])
+        return [f"{s}{spec}" for s in fallbacks]
 
     def _get_template_name(self, template_name):
         """
@@ -118,30 +149,55 @@ class GCloudClient:
         ]
         instance_resource.metadata = metadata
 
-        # Try each zone in the region until one succeeds
+        # Build the list of machine types to try: template default + fallbacks
+        template_machine_type = instance_template_resource.properties.machine_type
+        fallback_types = self._get_fallback_machine_types(template_machine_type)
+        # None = use template default (no override)
+        machine_types_to_try = [None] + fallback_types
+
         last_error = None
-        for zone in self.zones:
-            request = compute_v1.InsertInstanceRequest(
-                project=self.project_id,
-                zone=zone,
-                instance_resource=instance_resource,
-                source_instance_template=instance_template_resource.self_link
-            )
+        for machine_type_override in machine_types_to_try:
+            if machine_type_override:
+                logger.info(f"Trying fallback machine type: {machine_type_override}")
 
-            try:
-                operation = self.instance_client.insert(request=request)
-                logger.info(f"Instance creation operation started in {zone}: {operation.name}")
-                operation.result()
-                logger.info(f"Instance created successfully in {zone}: {instance_name}")
-                return instance_name
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Failed to create instance in {zone}: {e}")
-                if len(self.zones) > 1:
-                    logger.info(f"Trying next zone...")
-                continue
+            for zone in self.zones:
+                # Override machine type if using a fallback
+                if machine_type_override:
+                    instance_resource.machine_type = f"zones/{zone}/machineTypes/{machine_type_override}"
+                else:
+                    instance_resource.machine_type = ""
 
-        logger.error(f"Failed to create instance in all zones: {last_error}")
+                request = compute_v1.InsertInstanceRequest(
+                    project=self.project_id,
+                    zone=zone,
+                    instance_resource=instance_resource,
+                    source_instance_template=instance_template_resource.self_link
+                )
+
+                try:
+                    operation = self.instance_client.insert(request=request)
+                    logger.info(f"Instance creation started in {zone} "
+                                f"({machine_type_override or template_machine_type}): {operation.name}")
+                    operation.result()
+                    logger.info(f"Instance created successfully in {zone}: {instance_name}")
+                    return instance_name
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e)
+                    if "ZONE_RESOURCE_POOL_EXHAUSTED" in error_str:
+                        logger.warning(f"Resource exhausted in {zone} for "
+                                       f"{machine_type_override or template_machine_type}")
+                        continue
+                    elif "is not found" in error_str or "was not found" in error_str:
+                        # Machine type doesn't exist in this zone (e.g. t2a not available)
+                        logger.warning(f"Machine type {machine_type_override} not available in {zone}")
+                        break  # Skip remaining zones for this machine type
+                    else:
+                        # For other errors (quota, permissions), don't try fallbacks
+                        logger.error(f"Failed to create instance: {e}")
+                        raise
+
+        logger.error(f"Failed to create instance in all zones and machine types: {last_error}")
         raise last_error
 
     def count_runner_instances(self):

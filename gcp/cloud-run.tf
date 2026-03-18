@@ -68,6 +68,7 @@ module "cloud_run_github_runners_manager" {
     # Second generation Cloud Run for faster CPU.
     # The first generation with faster cold starts is still too slow for our webhook.
     gen2_execution_environment = true
+    timeout = "600s" # Fallback chain can take minutes when zones are exhausted
     scaling = {
       min_instance_count = var.github_runners_manager_min_instance_count # Min. 1, we do not scale to zero.
       max_instance_count = var.github_runners_manager_max_instance_count

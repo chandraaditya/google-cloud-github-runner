@@ -202,7 +202,7 @@ class GCloudClient:
                     operation = self.instance_client.insert(request=request)
                     logger.info(f"Instance creation started in {zone} "
                                 f"({machine_type_override or template_machine_type}): {operation.name}")
-                    operation.result()
+                    operation.result(timeout=120)
                     logger.info(f"Instance created successfully in {zone}: {instance_name}")
                     return instance_name
                 except Exception as e:

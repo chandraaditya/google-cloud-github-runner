@@ -6,9 +6,9 @@ resource "google_cloud_tasks_queue" "runner_jobs" {
   location = var.region
 
   rate_limits {
-    # Serial dispatch (1 at a time) eliminates the race condition in the concurrency check.
-    # The actual VM limit is enforced in the task handler via MAX_CONCURRENT_RUNNERS.
-    max_concurrent_dispatches = 1
+    # Allows parallel task dispatch. The actual VM limit is enforced in the
+    # task handler via MAX_CONCURRENT_RUNNERS (active VM count check).
+    max_concurrent_dispatches = 5
     max_dispatches_per_second = 500
   }
 

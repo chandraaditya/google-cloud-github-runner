@@ -13,6 +13,7 @@ module "service-account-compute-vm-github-runners" {
   }
   iam_project_roles = {
     (module.project.project_id) = [
+      "roles/compute.instanceAdmin.v1", # Self-delete on idle (watchdog)
       "roles/logging.logWriter",
       "roles/monitoring.metricWriter",
     ]

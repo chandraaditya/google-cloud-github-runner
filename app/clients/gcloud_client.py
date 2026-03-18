@@ -161,11 +161,10 @@ class GCloudClient:
                 logger.info(f"Trying fallback machine type: {machine_type_override}")
 
             for zone in self.zones:
-                # Override machine type if using a fallback
+                # Override machine type only when using a fallback.
+                # For the template default (None), don't set machine_type at all.
                 if machine_type_override:
                     instance_resource.machine_type = f"zones/{zone}/machineTypes/{machine_type_override}"
-                else:
-                    instance_resource.machine_type = ""
 
                 request = compute_v1.InsertInstanceRequest(
                     project=self.project_id,

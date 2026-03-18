@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 import shlex
+import google.api_core.exceptions
 import google.cloud.compute_v1 as compute_v1
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,12 @@ class GCloudClient:
 
         if not self.project_id:
             logger.warning("GOOGLE_CLOUD_PROJECT not set. GCloudClient will not work correctly.")
+
+        # All zones in the region, primary zone first, for fallback on ZONE_RESOURCE_POOL_EXHAUSTED
+        self.zones = [f"{self.region}-{s}" for s in ['a', 'b', 'c']]
+        if self.zone in self.zones:
+            self.zones.remove(self.zone)
+        self.zones.insert(0, self.zone)
 
         # https://docs.cloud.google.com/python/docs/reference/compute/latest/google.cloud.compute_v1.services.instances.InstancesClient
         self.instance_client = compute_v1.InstancesClient()
@@ -111,48 +118,52 @@ class GCloudClient:
         ]
         instance_resource.metadata = metadata
 
-        # Create the request
-        # https://docs.cloud.google.com/python/docs/reference/compute/latest/google.cloud.compute_v1.types.InsertInstanceRequest
-        request = compute_v1.InsertInstanceRequest(
-            project=self.project_id,
-            zone=self.zone,
-            instance_resource=instance_resource,
-            source_instance_template=instance_template_resource.self_link
-        )
-
-        try:
-            # https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert
-            operation = self.instance_client.insert(
-                request=request
+        # Try each zone in the region until one succeeds
+        last_error = None
+        for zone in self.zones:
+            request = compute_v1.InsertInstanceRequest(
+                project=self.project_id,
+                zone=zone,
+                instance_resource=instance_resource,
+                source_instance_template=instance_template_resource.self_link
             )
-            logger.info(f"Instance creation operation started: {operation.name}")
-            # Wait for the operation to complete so we catch errors like
-            # ZONE_RESOURCE_POOL_EXHAUSTED before returning success.
-            operation.result()
-            logger.info(f"Instance created successfully: {instance_name}")
-            return instance_name
-        except Exception as e:
-            logger.error(f"Failed to create instance: {e}")
-            raise
+
+            try:
+                operation = self.instance_client.insert(request=request)
+                logger.info(f"Instance creation operation started in {zone}: {operation.name}")
+                operation.result()
+                logger.info(f"Instance created successfully in {zone}: {instance_name}")
+                return instance_name
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Failed to create instance in {zone}: {e}")
+                if len(self.zones) > 1:
+                    logger.info(f"Trying next zone...")
+                continue
+
+        logger.error(f"Failed to create instance in all zones: {last_error}")
+        raise last_error
 
     def count_runner_instances(self):
         """
-        Count the number of currently running or provisioning runner GCE instances.
+        Count the number of currently running or provisioning runner GCE instances
+        across all zones in the region.
 
         Returns:
             int: The number of active runner instances.
         """
         try:
             count = 0
-            request = compute_v1.ListInstancesRequest(
-                project=self.project_id,
-                zone=self.zone,
-            )
-            for instance in self.instance_client.list(request=request):
-                if (instance.name.startswith("runner-") or instance.name.startswith("dependabot-")) and \
-                        instance.status in ("RUNNING", "STAGING", "PROVISIONING"):
-                    count += 1
-            logger.info(f"Active runner instance count: {count}")
+            for zone in self.zones:
+                request = compute_v1.ListInstancesRequest(
+                    project=self.project_id,
+                    zone=zone,
+                )
+                for instance in self.instance_client.list(request=request):
+                    if (instance.name.startswith("runner-") or instance.name.startswith("dependabot-")) and \
+                            instance.status in ("RUNNING", "STAGING", "PROVISIONING"):
+                        count += 1
+            logger.info(f"Active runner instance count (across {len(self.zones)} zones): {count}")
             return count
         except Exception as e:
             logger.error(f"Failed to count runner instances: {e}")
@@ -160,19 +171,24 @@ class GCloudClient:
 
     def delete_runner_instance(self, instance_name):
         """
-        Delete a GCE instance.
+        Delete a GCE instance, searching across all zones in the region.
 
         Args:
             instance_name (str): The name of the instance to delete.
         """
         logger.info(f"Deleting GCE instance {instance_name}")
-        try:
-            operation = self.instance_client.delete(
-                project=self.project_id,
-                zone=self.zone,
-                instance=instance_name
-            )
-            logger.info(f"Instance deletion operation started: {operation.name}")
-        except Exception as e:
-            logger.error(f"Failed to delete instance {instance_name}: {e}")
-            raise
+        for zone in self.zones:
+            try:
+                operation = self.instance_client.delete(
+                    project=self.project_id,
+                    zone=zone,
+                    instance=instance_name
+                )
+                logger.info(f"Instance deletion operation started in {zone}: {operation.name}")
+                return
+            except google.api_core.exceptions.NotFound:
+                continue
+            except Exception as e:
+                logger.error(f"Failed to delete instance {instance_name} in {zone}: {e}")
+                raise
+        logger.error(f"Instance {instance_name} not found in any zone")

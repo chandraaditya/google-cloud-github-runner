@@ -187,12 +187,16 @@ class GCloudClient:
                         logger.warning(f"Resource exhausted in {zone} for "
                                        f"{machine_type_override or template_machine_type}")
                         continue
-                    elif "is not found" in error_str or "was not found" in error_str:
-                        # Machine type doesn't exist in this zone (e.g. t2a not available)
+                    elif "QUOTA_EXCEEDED" in error_str:
+                        # No quota for this machine series — skip to next fallback
+                        logger.warning(f"Quota exceeded for "
+                                       f"{machine_type_override or template_machine_type}: {e}")
+                        break  # Skip remaining zones, try next machine type
+                    elif "does not exist" in error_str:
+                        # Machine type doesn't exist in this zone (e.g. n2d-medium, t2a)
                         logger.warning(f"Machine type {machine_type_override} not available in {zone}")
                         break  # Skip remaining zones for this machine type
                     else:
-                        # For other errors (quota, permissions), don't try fallbacks
                         logger.error(f"Failed to create instance: {e}")
                         raise
 

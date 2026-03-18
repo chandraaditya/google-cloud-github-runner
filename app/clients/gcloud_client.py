@@ -145,8 +145,19 @@ class GCloudClient:
                 "gha-runner": template_name
             }
 
+        # Self-delete command: VM deletes itself using metadata to find its own zone
+        self_delete = (
+            "ZONE=$(curl -sH 'Metadata-Flavor: Google' "
+            "metadata.google.internal/computeMetadata/v1/instance/zone | cut -d/ -f4) && "
+            "gcloud compute instances delete $(hostname) --zone=$ZONE --quiet"
+        )
+
         # Set metadata (startup script) - use shlex.quote to prevent command injection
         startup_script = (
+            # Idle watchdog: if no job starts within 5 min, self-delete
+            f"( sleep 300 && "
+            f"if ! pgrep -f Runner.Worker > /dev/null; then {self_delete}; fi ) & "
+            # Normal runner startup
             f"sudo -u runner /actions-runner/config.sh --url {shlex.quote(repo_url)} "
             f"--token {shlex.quote(registration_token)} "
             f"--name {shlex.quote(instance_name)} --labels {shlex.quote(template_name)} "

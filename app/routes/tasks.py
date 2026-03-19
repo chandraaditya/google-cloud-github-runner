@@ -14,7 +14,7 @@ tasks_bp = Blueprint('tasks', __name__)
 
 
 @tasks_bp.route('/tasks/create-runner', methods=['POST'])
-@limiter.limit("1000 per hour")
+@limiter.exempt
 def create_runner():
     """
     Handle runner creation task dispatched by Cloud Tasks.
